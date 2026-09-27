@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Classic farmer, wolf, goat and cabbage river crossing puzzle — play and learn about state-space search.">
+<title>River Crossing · Farmer Puzzle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#fdf6e3; --surface:#fff8ec; --border:#d4b896; --text:#2d1f0e; --text-muted:#7a5c3a;
+  --accent:#5b9bd5; --accent2:#3cb371; --water:#8ecae6; --water-deep:#219ebc;
+  --wrong:#d94f4f; --hint:#e07b39;
+  --font:'Nunito',system-ui,sans-serif;
+  --radius:14px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,*::before,*::after { animation-duration:0.01ms !important; transition-duration:0.01ms !important; }
+}
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+body {
+  font-family:var(--font); font-size:18px;
+  background:var(--bg); color:var(--text);
+  min-height:100vh; display:flex; flex-direction:column; align-items:center;
+  padding:12px 10px 36px;
+}
+h1 {
+  font-size:clamp(1.35rem,5vw,2rem); font-weight:800; color:var(--water-deep);
+  text-align:center; margin-bottom:4px;
+}
+.subtitle { font-size:0.88rem; color:var(--text-muted); text-align:center; margin-bottom:12px; max-width:520px; line-height:1.45; }
+
+#mode-bar {
+  width:100%; max-width:720px; display:flex; gap:8px; justify-content:center; margin-bottom:12px;
+}
+.mode-btn {
+  flex:1; max-width:180px; padding:10px 14px; border-radius:10px; border:2px solid var(--border);
+  background:var(--surface); color:var(--text); font-family:var(--font);
+  font-size:0.9rem; font-weight:800; cursor:pointer; transition:background 0.18s,border-color 0.18s;
+}
+.mode-btn:hover { border-color:var(--accent); background:#f3ebe0; }
+.mode-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+.mode-btn:focus-visible { outline:3px solid var(--accent); outline-offset:2px; }
+
+#game-card, #learn-card {
+  width:100%; max-width:720px; background:var(--surface); border:2px solid var(--border);
+  border-radius:var(--radius); padding:14px 16px 18px; box-shadow:0 4px 18px rgba(0,0,0,0.08);
+}
+
+#play-extras { display:block; }
+#learn-extras { display:none; }
+
+.stats-row {
+  display:flex; flex-wrap:wrap; gap:10px; justify-content:center; margin-bottom:12px;
+  font-size:0.85rem; color:var(--text-muted);
+}
+.stats-row span strong { color:var(--text); }
+
+.river-scene {
+  display:grid; grid-template-columns:1fr minmax(100px,140px) 1fr; gap:8px; align-items:stretch;
+  min-height:200px; margin-bottom:12px;
+}
+@media (max-width:560px) {
+  .river-scene { grid-template-columns:1fr; grid-template-rows:auto auto auto; }
+}
+
+.bank {
+  background:#e8f5e9; border:2px dashed #7ec080; border-radius:12px;
+  padding:10px; min-height:120px; display:flex; flex-direction:column;
+}
+.bank h3 { font-size:0.75rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:8px; text-align:center; }
+.bank-chips { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; align-content:flex-start; flex:1; }
+
+.water-col {
+  background:linear-gradient(180deg,var(--water) 0%,var(--water-deep) 100%);
+  border-radius:12px; padding:8px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
+}
+.water-label { font-size:0.7rem; font-weight:800; color:#fff; text-transform:uppercase; letter-spacing:0.05em; opacity:0.9; }
+
+.boat-panel {
+  background:rgba(255,255,255,0.25); border:2px solid rgba(255,255,255,0.5);
+  border-radius:10px; padding:8px; width:100%; text-align:center;
+}
+.boat-cap { font-size:0.72rem; font-weight:800; color:#fff; margin-bottom:6px; }
+.boat-chips { display:flex; flex-wrap:wrap; gap:6px; justify-content:center; min-height:44px; align-items:center; }
+
+.chip {
+  display:inline-flex; align-items:center; gap:4px; padding:8px 10px;
+  border-radius:10px; border:2px solid var(--border); background:#fff;
+  font-family:var(--font); font-size:0.82rem; font-weight:700; cursor:pointer;
+  transition:transform 0.12s,box-shadow 0.12s;
+}
+.chip .emoji { font-size:1.25rem; line-height:1; }
+.chip:hover:not(:disabled) { transform:scale(1.04); box-shadow:0 2px 8px rgba(0,0,0,0.12); }
+.chip:focus-visible { outline:3px solid var(--accent); outline-offset:2px; }
+.chip:disabled { opacity:0.45; cursor:not-allowed; }
+.chip.in-boat { border-color:var(--accent); background:#e8f4fc; }
+.chip.selected { box-shadow:0 0 0 3px var(--accent); }
+
+#status {
+  text-align:center; font-weight:700; font-size:0.95rem; min-height:2.8em; line-height:1.4;
+  padding:8px 10px; border-radius:10px; background:#f3ebe0; margin-bottom:10px;
+}
+#status.status-bad { background:#fde8e8; color:var(--wrong); }
+#status.status-good { background:#dff2e8; color:#1e6b40; }
+#status.status-hint { background:#fff0e6; color:#9a4a00; }
+
+.btn-row { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; }
+.game-btn {
+  padding:10px 16px; border-radius:10px; border:2px solid transparent;
+  font-family:var(--font); font-size:0.88rem; font-weight:800; cursor:pointer;
+}
+.game-btn:focus-visible { outline:3px solid var(--accent); outline-offset:2px; }
+.btn-cross { background:var(--water-deep); color:#fff; min-width:140px; }
+.btn-cross:hover:not(:disabled) { filter:brightness(1.08); }
+.btn-cross:disabled { opacity:0.45; cursor:not-allowed; }
+.btn-reset { background:var(--surface); border-color:var(--border); color:var(--text); }
+.btn-hint { background:var(--hint); color:#fff; }
+.btn-undo { background:var(--surface); border-color:var(--accent); color:var(--accent); }
+.btn-undo:disabled { opacity:0.45; cursor:not-allowed; }
+.btn-cta { background:var(--accent2); color:#fff; margin-top:14px; }
+
+.learn-section { margin-bottom:18px; }
+.learn-section h2 { font-size:1.05rem; color:var(--water-deep); margin-bottom:8px; }
+.learn-section p, .learn-section li { font-size:0.92rem; line-height:1.55; color:var(--text); margin-bottom:8px; }
+.learn-section ul { padding-left:1.25rem; margin-bottom:10px; }
+.rules-table {
+  width:100%; border-collapse:collapse; font-size:0.88rem; margin:10px 0;
+}
+.rules-table th, .rules-table td {
+  border:1px solid var(--border); padding:8px 10px; text-align:left;
+}
+.rules-table th { background:#f3ebe0; }
+.card-note {
+  background:#f3ebe0; border-radius:10px; padding:12px 14px; font-size:0.88rem; line-height:1.5;
+  border-left:4px solid var(--accent);
+}
+code { font-size:0.85em; background:#f3ebe0; padding:2px 6px; border-radius:4px; }
+</style>
+</head>
+<body>
+
+<h1>🌾 River Crossing</h1>
+<p class="subtitle">Help the farmer get the wolf, goat, and cabbage across — without anyone getting eaten.</p>
+
+<div id="mode-bar">
+  <button type="button" class="mode-btn active" data-mode="play">🎮 Play</button>
+  <button type="button" class="mode-btn" data-mode="learn">📖 Learn</button>
+</div>
+
+<div id="game-card">
+  <div id="play-extras">
+    <div class="stats-row">
+      <span>Crossings: <strong id="move-count">0</strong></span>
+      <span>Boat: <strong id="boat-side-label">left bank</strong></span>
+    </div>
+
+    <div class="river-scene" aria-label="River crossing scene">
+      <div class="bank" id="bank-left">
+        <h3>Start bank</h3>
+        <div class="bank-chips" id="chips-left"></div>
+      </div>
+      <div class="water-col">
+        <span class="water-label">River</span>
+        <div class="boat-panel">
+          <div class="boat-cap">👨‍🌾 Farmer + 1 slot</div>
+          <div class="boat-chips" id="chips-boat"></div>
+        </div>
+      </div>
+      <div class="bank" id="bank-right">
+        <h3>Far bank</h3>
+        <div class="bank-chips" id="chips-right"></div>
+      </div>
+    </div>
+
+    <div id="status" role="status" aria-live="polite">
+      Tap the farmer into the boat, optionally one companion, then cross the river.
+    </div>
+
+    <div class="btn-row">
+      <button type="button" class="game-btn btn-cross" id="btn-cross" disabled>⛵ Cross river</button>
+      <button type="button" class="game-btn btn-undo" id="btn-undo" disabled>↩ Undo</button>
+      <button type="button" class="game-btn btn-hint" id="btn-hint">💡 Hint</button>
+      <button type="button" class="game-btn btn-reset" id="btn-reset">🔄 Reset</button>
+    </div>
+  </div>
+
+  <div id="learn-extras">
+    <div class="learn-section">
+      <h2>The story</h2>
+      <p>
+        A farmer needs to cross a river with a wolf, a goat, and a cabbage. The boat is tiny:
+        only the farmer and <strong>one other thing</strong> fit. Worse, the farmer must
+        <strong>row every trip</strong> — nothing can cross alone.
+      </p>
+    </div>
+
+    <div class="learn-section">
+      <h2>Crossing rules</h2>
+      <ul>
+        <li><strong>Farmer rows every trip</strong> — the boat never moves without the farmer aboard.</li>
+        <li><strong>One cargo item per crossing</strong> — each trip is the farmer alone, or the farmer plus the wolf, goat, or cabbage. Never two at once.</li>
+      </ul>
+      <p>Valid loads: farmer only, farmer + wolf, farmer + goat, or farmer + cabbage.</p>
+    </div>
+
+    <div class="learn-section">
+      <h2>Safety rules</h2>
+      <table class="rules-table">
+        <thead>
+          <tr><th>If left alone on a bank…</th><th>What happens</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Wolf and goat (no farmer)</td><td>Wolf eats the goat — you lose.</td></tr>
+          <tr><td>Goat and cabbage (no farmer)</td><td>Goat eats the cabbage — you lose.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="learn-section">
+      <h2>Computing recap</h2>
+      <p>
+        This puzzle is a classic <strong>planning</strong> problem. At any moment you have a
+        <strong>state</strong>: who is on each bank and where the boat is. Each crossing is a
+        <strong>move</strong> to a new state.
+      </p>
+      <ul>
+        <li><strong>Constraints</strong> — crossing rules limit which moves exist; safety rules mark some states as failures.</li>
+        <li><strong>State space</strong> — only finitely many arrangements matter (roughly a few dozen valid snapshots).</li>
+        <li><strong>Search</strong> — a computer can try moves (or use breadth-first search) to find the shortest safe sequence; here the minimum is <strong>7 crossings</strong>.</li>
+      </ul>
+      <div class="card-note">
+        Think of each safe arrangement as a node in a graph; legal crossings are edges. Finding a path from “everyone on the start bank” to “everyone on the far bank” is the same kind of problem as route-finding in maps or AI planners.
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button type="button" class="game-btn btn-cta" id="btn-try-play">Try it in Play →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const ITEMS = ['farmer', 'wolf', 'goat', 'cabbage'];
+const CARGO = ['wolf', 'goat', 'cabbage'];
+const LABELS = { farmer: 'Farmer', wolf: 'Wolf', goat: 'Goat', cabbage: 'Cabbage' };
+const EMOJI = { farmer: '👨‍🌾', wolf: '🐺', goat: '🐐', cabbage: '🥬' };
+
+function initialState() {
+  return {
+    loc: { farmer: 'left', wolf: 'left', goat: 'left', cabbage: 'left' },
+    boatSide: 'left',
+    moves: 0,
+    gameOver: null,
+  };
+}
+
+function cloneState(s) {
+  return {
+    loc: { ...s.loc },
+    boatSide: s.boatSide,
+    moves: s.moves,
+    gameOver: s.gameOver,
+  };
+}
+
+function otherSide(side) {
+  return side === 'left' ? 'right' : 'left';
+}
+
+function bankOf(s, item) {
+  const L = s.loc[item];
+  if (L === 'boat') return s.boatSide;
+  return L;
+}
+
+function passengerInBoat(s) {
+  for (const c of CARGO) if (s.loc[c] === 'boat') return c;
+  return null;
+}
+
+function farmerInBoat(s) {
+  return s.loc.farmer === 'boat';
+}
+
+function isUnsafeBank(s, side) {
+  const onBank = (item) => s.loc[item] !== 'boat' && s.loc[item] === side;
+  const farmerHere = onBank('farmer');
+  if (farmerHere) return false;
+  const w = onBank('wolf'), g = onBank('goat'), c = onBank('cabbage');
+  if (w && g) return 'wolf-goat';
+  if (g && c) return 'goat-cabbage';
+  return null;
+}
+
+function checkUnsafeAfterCross(s) {
+  for (const side of ['left', 'right']) {
+    const bad = isUnsafeBank(s, side);
+    if (bad) return bad;
+  }
+  return null;
+}
+
+function isWin(s) {
+  return ITEMS.every((i) => s.loc[i] === 'right');
+}
+
+function serialize(s) {
+  return ITEMS.map((i) => s.loc[i]).join(',') + '|' + s.boatSide;
+}
+
+function canBoard(s, item) {
+  if (s.gameOver) return { ok: false, msg: 'Game over — reset to play again.' };
+  if (s.loc[item] === 'boat') return { ok: false, msg: 'Already in the boat — tap to leave the boat.' };
+
+  const side = bankOf(s, item);
+  if (side !== s.boatSide) return { ok: false, msg: 'The boat is on the other bank.' };
+
+  if (item !== 'farmer') {
+    const pass = passengerInBoat(s);
+    if (pass) return { ok: false, msg: 'Only one thing at a time! Boat is full.' };
+    if (!farmerInBoat(s) && s.loc.farmer !== s.boatSide) {
+      return { ok: false, msg: 'Farmer must be on this bank to load cargo.' };
+    }
+  }
+  return { ok: true };
+}
+
+function board(s, item) {
+  const check = canBoard(s, item);
+  if (!check.ok) return check;
+  s.loc[item] = 'boat';
+  return { ok: true };
+}
+
+function unboard(s, item) {
+  if (s.gameOver) return { ok: false, msg: 'Game over.' };
+  if (s.loc[item] !== 'boat') return { ok: false, msg: 'Not in the boat.' };
+  s.loc[item] = s.boatSide;
+  return { ok: true };
+}
+
+function simulateCross(s) {
+  if (!farmerInBoat(s)) return { ok: false, msg: 'The farmer must row — get in the boat first.' };
+  const next = cloneState(s);
+  const dest = otherSide(next.boatSide);
+  next.loc.farmer = dest;
+  const pass = passengerInBoat(next);
+  if (pass) next.loc[pass] = dest;
+  next.boatSide = dest;
+  next.moves += 1;
+  const bad = checkUnsafeAfterCross(next);
+  if (bad) {
+    next.gameOver = bad;
+    return { ok: true, state: next, lost: bad };
+  }
+  if (isWin(next)) next.gameOver = 'win';
+  return { ok: true, state: next, lost: null };
+}
+
+function applyCross(s) {
+  const sim = simulateCross(s);
+  if (!sim.ok) return sim;
+  if (sim.lost) {
+    Object.assign(s, sim.state);
+    return { ok: true, lost: sim.lost };
+  }
+  Object.assign(s, sim.state);
+  return { ok: true, lost: null };
+}
+
+function crossWouldLose(s) {
+  const sim = simulateCross(s);
+  if (!sim.ok) return null;
+  return sim.lost;
+}
+
+function getLegalActions(s) {
+  if (s.gameOver) return [];
+  const actions = [];
+  for (const item of ITEMS) {
+    if (s.loc[item] === 'boat') actions.push({ type: 'unboard', item });
+    else if (canBoard(s, item).ok) actions.push({ type: 'board', item });
+  }
+  if (farmerInBoat(s)) {
+    const lose = crossWouldLose(s);
+    if (!lose) actions.push({ type: 'cross' });
+  }
+  return actions;
+}
+
+function applyAction(s, action) {
+  const n = cloneState(s);
+  if (action.type === 'board') {
+    const r = board(n, action.item);
+    if (!r.ok) return null;
+  } else if (action.type === 'unboard') {
+    const r = unboard(n, action.item);
+    if (!r.ok) return null;
+  } else if (action.type === 'cross') {
+    const sim = simulateCross(n);
+    if (!sim.ok || sim.lost) return null;
+    return sim.state;
+  }
+  return n;
+}
+
+function hintNextMove(s) {
+  if (s.gameOver) return null;
+  const startKey = serialize(s);
+  const queue = [{ state: cloneState(s), path: [] }];
+  const seen = new Set([startKey]);
+
+  while (queue.length) {
+    const { state, path } = queue.shift();
+    if (isWin(state)) return path[0] || null;
+
+    for (const action of getLegalActions(state)) {
+      const next = applyAction(state, action);
+      if (!next || next.gameOver === 'wolf-goat' || next.gameOver === 'goat-cabbage') continue;
+      const key = serialize(next);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      queue.push({ state: next, path: path.concat([action]) });
+    }
+  }
+  return null;
+}
+
+function actionToHintText(action) {
+  if (!action) return 'No safe move found from here — undo or reset.';
+  if (action.type === 'cross') return 'Cross the river with whoever is in the boat.';
+  if (action.type === 'board') {
+    if (action.item === 'farmer') return 'Put the farmer in the boat.';
+    return `Load the ${LABELS[action.item].toLowerCase()} into the boat (only one companion!).`;
+  }
+  if (action.type === 'unboard') return `Take the ${LABELS[action.item].toLowerCase()} off the boat.`;
+  return '';
+}
+
+// ── UI state ──
+let state = initialState();
+let undoStack = [];
+let hintLevel = 0;
+
+const $play = document.getElementById('play-extras');
+const $learn = document.getElementById('learn-extras');
+const $status = document.getElementById('status');
+const $moveCount = document.getElementById('move-count');
+const $boatSide = document.getElementById('boat-side-label');
+const $chipsLeft = document.getElementById('chips-left');
+const $chipsRight = document.getElementById('chips-right');
+const $chipsBoat = document.getElementById('chips-boat');
+const $btnCross = document.getElementById('btn-cross');
+const $btnUndo = document.getElementById('btn-undo');
+const $btnHint = document.getElementById('btn-hint');
+const $btnReset = document.getElementById('btn-reset');
+const $btnTryPlay = document.getElementById('btn-try-play');
+
+function setStatus(msg, kind) {
+  $status.textContent = msg;
+  $status.className = kind === 'bad' ? 'status-bad' : kind === 'good' ? 'status-good' : kind === 'hint' ? 'status-hint' : '';
+}
+
+function pushUndo() {
+  undoStack.push({
+    loc: { ...state.loc },
+    boatSide: state.boatSide,
+    moves: state.moves,
+    gameOver: state.gameOver,
+  });
+  if (undoStack.length > 40) undoStack.shift();
+}
+
+function makeChip(item, where) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'chip' + (where === 'boat' ? ' in-boat' : '');
+  btn.innerHTML = `<span class="emoji" aria-hidden="true">${EMOJI[item]}</span><span>${LABELS[item]}</span>`;
+  btn.setAttribute('aria-label', LABELS[item]);
+
+  if (state.gameOver && state.gameOver !== 'win') {
+    btn.disabled = true;
+    return btn;
+  }
+  if (state.gameOver === 'win') {
+    btn.disabled = true;
+    return btn;
+  }
+
+  btn.addEventListener('click', () => {
+    if (state.loc[item] === 'boat') {
+      pushUndo();
+      const r = unboard(state, item);
+      if (!r.ok) setStatus(r.msg, 'bad');
+      else setStatus('Back on the bank. Ready when you are.');
+      hintLevel = 0;
+      render();
+      return;
+    }
+    const check = canBoard(state, item);
+    if (!check.ok) {
+      setStatus(check.msg, 'bad');
+      return;
+    }
+    pushUndo();
+    board(state, item);
+    hintLevel = 0;
+    setStatus('In the boat. Add at most one more, then cross.');
+    render();
+  });
+  return btn;
+}
+
+function renderChips() {
+  $chipsLeft.innerHTML = '';
+  $chipsRight.innerHTML = '';
+  $chipsBoat.innerHTML = '';
+
+  for (const item of ITEMS) {
+    const L = state.loc[item];
+    if (L === 'boat') $chipsBoat.appendChild(makeChip(item, 'boat'));
+    else if (L === 'left') $chipsLeft.appendChild(makeChip(item, 'left'));
+    else $chipsRight.appendChild(makeChip(item, 'right'));
+  }
+
+  if (!$chipsBoat.children.length) {
+    const empty = document.createElement('span');
+    empty.style.cssText = 'font-size:0.75rem;color:rgba(255,255,255,0.85);font-weight:700;';
+    empty.textContent = 'Empty';
+    $chipsBoat.appendChild(empty);
+  }
+}
+
+function render() {
+  renderChips();
+  $moveCount.textContent = String(state.moves);
+  $boatSide.textContent = state.boatSide === 'left' ? 'left bank' : 'far bank';
+
+  const canCross = farmerInBoat(state) && !state.gameOver;
+  let blockMsg = null;
+  if (farmerInBoat(state) && !state.gameOver) {
+    const lose = crossWouldLose(state);
+    if (lose === 'wolf-goat') blockMsg = 'That crossing would leave the wolf and goat alone — blocked.';
+    if (lose === 'goat-cabbage') blockMsg = 'That crossing would leave the goat and cabbage alone — blocked.';
+  }
+  $btnCross.disabled = !canCross || !!blockMsg;
+
+  $btnUndo.disabled = undoStack.length === 0;
+
+  if (state.gameOver === 'win') {
+    setStatus(`You made it in ${state.moves} crossing${state.moves === 1 ? '' : 's'}! Minimum is 7.`, 'good');
+  } else if (state.gameOver === 'wolf-goat') {
+    setStatus('The wolf ate the goat! Reset and try again.', 'bad');
+  } else if (state.gameOver === 'goat-cabbage') {
+    setStatus('The goat ate the cabbage! Reset and try again.', 'bad');
+  }
+}
+
+function resetGame() {
+  state = initialState();
+  undoStack = [];
+  hintLevel = 0;
+  setStatus('Tap the farmer into the boat, optionally one companion, then cross the river.');
+  render();
+}
+
+function setMode(mode) {
+  document.querySelectorAll('.mode-btn').forEach((b) => {
+    b.classList.toggle('active', b.dataset.mode === mode);
+  });
+  $play.style.display = mode === 'play' ? 'block' : 'none';
+  $learn.style.display = mode === 'learn' ? 'block' : 'none';
+}
+
+document.querySelectorAll('.mode-btn').forEach((btn) => {
+  btn.addEventListener('click', () => setMode(btn.dataset.mode));
+});
+
+$btnCross.addEventListener('click', () => {
+  if (!farmerInBoat(state)) {
+    setStatus('The farmer must row every trip — get in the boat first.', 'bad');
+    return;
+  }
+  const lose = crossWouldLose(state);
+  if (lose) {
+    setStatus(lose === 'wolf-goat'
+      ? 'Cannot cross: wolf and goat would be left alone.'
+      : 'Cannot cross: goat and cabbage would be left alone.', 'bad');
+    return;
+  }
+  pushUndo();
+  applyCross(state);
+  hintLevel = 0;
+  if (state.gameOver === 'win') render();
+  else if (!state.gameOver) setStatus('Pick who goes with the farmer this trip.');
+  render();
+});
+
+$btnUndo.addEventListener('click', () => {
+  const prev = undoStack.pop();
+  if (!prev) return;
+  state.loc = prev.loc;
+  state.boatSide = prev.boatSide;
+  state.moves = prev.moves;
+  state.gameOver = prev.gameOver;
+  hintLevel = 0;
+  setStatus('Undone one step.');
+  render();
+});
+
+const HINT_STAGES = [
+  'Remember: the farmer must row every trip, and the boat fits at most one extra item.',
+  'Never leave the wolf with the goat, or the goat with the cabbage, unless the farmer is there.',
+  null,
+];
+
+$btnHint.addEventListener('click', () => {
+  if (state.gameOver) {
+    setStatus('Reset to get a new hint.', 'hint');
+    return;
+  }
+  if (hintLevel < 2) {
+    setStatus(HINT_STAGES[hintLevel], 'hint');
+    hintLevel += 1;
+    return;
+  }
+  const action = hintNextMove(state);
+  setStatus(actionToHintText(action), 'hint');
+});
+
+$btnReset.addEventListener('click', resetGame);
+
+$btnTryPlay.addEventListener('click', () => {
+  resetGame();
+  setMode('play');
+});
+
+render();
+</script>
+</body>
+</html>
